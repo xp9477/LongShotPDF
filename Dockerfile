@@ -7,6 +7,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --only=production
 
+# 创建public目录（如果不存在）
+RUN mkdir -p public
+
 # 复制源代码
 COPY . .
 RUN npm run build
@@ -17,6 +20,9 @@ FROM node:18-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV production
+
+# 创建public目录
+RUN mkdir -p public
 
 # 只复制必要的文件
 COPY --from=builder /app/next.config.js ./

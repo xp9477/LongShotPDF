@@ -91,20 +91,71 @@ export const detectSplitPoints = (img, threshold = 50, minLineWidth = 2, minLine
 };
 
 /**
+ * 分析并裁剪图像中的空白区域
+ * @param {HTMLCanvasElement} canvas - 包含图像的画布
+ * @returns {HTMLCanvasElement} - 裁剪后的画布
+ */
+const trimEmptySpace = (canvas) => {
+  const ctx = canvas.getContext('2d');
+  const { width, height } = canvas;
+  
+  // 获取图像数据
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  
+  // 初始化边界
+  let top = height;
+  let bottom = 0;
+  let left = width;
+  let right = 0;
+  
+  // 检测内容区域边界
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const index = (y * width + x) * 4;
+      // 如果像素不是白色（有内容）
+      if (data[index] < 250 || data[index + 1] < 250 || data[index + 2] < 250 || data[index + 3] > 0) {
+        if (y < top) top = y;
+        if (y > bottom) bottom = y;
+        if (x < left) left = x;
+        if (x > right) right = x;
+      }
+    }
+  }
+  
+  // 防止没有内容的情况
+  if (top >= bottom || left >= right) {
+    return canvas;
+  }
+  
+  // 裁剪内容区域
+  const trimWidth = right - left + 1;
+  const trimHeight = bottom - top + 1;
+  
+  const trimmedCanvas = document.createElement('canvas');
+  trimmedCanvas.width = trimWidth;
+  trimmedCanvas.height = trimHeight;
+  
+  const trimmedCtx = trimmedCanvas.getContext('2d');
+  trimmedCtx.drawImage(
+    canvas, 
+    left, top, trimWidth, trimHeight,
+    0, 0, trimWidth, trimHeight
+  );
+  
+  return trimmedCanvas;
+};
+
+/**
  * 将图像切割成多个部分用于PDF生成
  * @param {string} dataUrl - 图像的数据URL
  * @param {Object} options - 切割选项
- * @param {number} options.maxHeight - 每页的最大高度（像素）
- * @param {number} options.overlap - 页面间的重叠像素数
  * @param {boolean} options.autoDetectSplits - 是否自动检测分割线
- * @param {number} options.splitSensitivity - 分割线检测灵敏度
  * @returns {Promise<Array<{dataUrl: string, width: number, height: number}>>}
  */
 export const sliceImage = async (dataUrl, { 
-  maxHeight = 1200, 
-  overlap = 50,
-  autoDetectSplits = false,
-  splitSensitivity = 30
+  autoDetectSplits = true,
+  splitSensitivity = 50
 } = {}) => {
   // 在浏览器环境中使用Canvas API处理图像
   return new Promise((resolve) => {
@@ -113,116 +164,53 @@ export const sliceImage = async (dataUrl, {
       const { width, height } = img;
       const slices = [];
       
-      // 如果图像高度小于最大高度，直接返回原图
-      if (height <= maxHeight) {
+      // 默认不再考虑最大高度，只基于黑线分割
+      // 如果图像没有可检测到的黑线，则将整个图像作为一个切片返回
+      
+      // 检测黑线分割点
+      const blackThreshold = 120 - splitSensitivity;
+      const splitPoints = detectSplitPoints(img, blackThreshold, 2, 60);
+      
+      // 如果没有找到黑线，返回整张图像
+      if (splitPoints.length === 0) {
         slices.push({ dataUrl, width, height });
         resolve(slices);
         return;
       }
       
-      // 自动检测分割线
-      let splitPoints = [];
-      if (autoDetectSplits) {
-        // 将灵敏度（10-100）转换为黑线亮度阈值（120-20）
-        // 灵敏度越高，阈值越低，检测到的线越多
-        const blackThreshold = 120 - splitSensitivity;
-        splitPoints = detectSplitPoints(img, blackThreshold, 2, 60);
-      }
+      // 按检测到的黑线分割图像
+      const allSplitPoints = [0, ...splitPoints, height];
       
-      // 如果找不到分割线或未启用自动检测，则使用固定高度切割
-      if (splitPoints.length === 0) {
-        // 计算需要的切片数量
-        const numSlices = Math.ceil(height / (maxHeight - overlap));
+      // 根据分割点创建切片
+      for (let i = 0; i < allSplitPoints.length - 1; i++) {
+        let startY = allSplitPoints[i];
+        let endY = allSplitPoints[i + 1];
         
-        for (let i = 0; i < numSlices; i++) {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          
-          // 最后一个切片的高度可能小于maxHeight
-          const sliceHeight = i === numSlices - 1 
-            ? height - (maxHeight - overlap) * i 
-            : maxHeight;
-          
-          canvas.width = width;
-          canvas.height = sliceHeight;
-          
-          // 计算切片在原图中的起始位置（添加重叠）
-          const startY = Math.max(0, i * (maxHeight - overlap));
-          
-          // 绘制切片
-          ctx.drawImage(
-            img, 
-            0, startY, 
-            width, sliceHeight, 
-            0, 0, 
-            width, sliceHeight
-          );
-          
-          slices.push({
-            dataUrl: canvas.toDataURL('image/png'),
-            width,
-            height: sliceHeight
-          });
-        }
-      } else {
-        // 按检测到的分割线切割
-        splitPoints = [0, ...splitPoints, height];
+        // 计算切片高度
+        const sliceHeight = endY - startY;
         
-        // 如果相邻分割点距离大于最大高度，进一步分割
-        const finalSplitPoints = [0];
+        // 创建Canvas并绘制切片
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = width;
+        canvas.height = sliceHeight;
         
-        for (let i = 1; i < splitPoints.length; i++) {
-          const prevPoint = splitPoints[i - 1];
-          const currentPoint = splitPoints[i];
-          const distance = currentPoint - prevPoint;
-          
-          if (distance > maxHeight) {
-            // 需要进一步分割
-            const additionalPoints = Math.floor(distance / maxHeight);
-            for (let j = 1; j <= additionalPoints; j++) {
-              const newPoint = prevPoint + j * maxHeight - Math.min(overlap, maxHeight / 10);
-              if (newPoint < currentPoint - 100) {  // 确保新点离下一个点有足够距离
-                finalSplitPoints.push(newPoint);
-              }
-            }
-          }
-          
-          finalSplitPoints.push(currentPoint);
-        }
+        ctx.drawImage(
+          img, 
+          0, startY, 
+          width, sliceHeight, 
+          0, 0, 
+          width, sliceHeight
+        );
         
-        // 根据分割点创建切片
-        for (let i = 0; i < finalSplitPoints.length - 1; i++) {
-          let startY = finalSplitPoints[i];
-          let endY = finalSplitPoints[i + 1];
-          
-          // 添加重叠（除了第一个切片）
-          if (i > 0) {
-            startY = Math.max(0, startY - overlap);
-          }
-          
-          // 计算切片高度
-          const sliceHeight = endY - startY;
-          
-          // 创建Canvas并绘制切片
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          canvas.width = width;
-          canvas.height = sliceHeight;
-          
-          ctx.drawImage(
-            img, 
-            0, startY, 
-            width, sliceHeight, 
-            0, 0, 
-            width, sliceHeight
-          );
-          
-          slices.push({
-            dataUrl: canvas.toDataURL('image/png'),
-            width,
-            height: sliceHeight
-          });
-        }
+        // 裁剪空白区域
+        const trimmedCanvas = trimEmptySpace(canvas);
+        
+        slices.push({
+          dataUrl: trimmedCanvas.toDataURL('image/png'),
+          width: trimmedCanvas.width,
+          height: trimmedCanvas.height
+        });
       }
       
       resolve(slices);
@@ -240,12 +228,16 @@ export const sliceImage = async (dataUrl, {
  * @param {number} options.margin - 页面边距（点）
  * @returns {Promise<Uint8Array>} - PDF文档的二进制数据
  */
-export const createPdfFromImages = async (imageSlices, { pageSize = 'A4', margin = 40 } = {}) => {
+export const createPdfFromImages = async (imageSlices, { pageSize = 'A4', margin = 0 } = {}) => {
   const pdfDoc = await PDFDocument.create();
   
   for (const slice of imageSlices) {
-    const page = pdfDoc.addPage([595, 842]); // A4 尺寸
-    const { width, height } = page.getSize();
+    // 创建适合图片尺寸的页面而不是固定A4尺寸
+    const { width: imgWidth, height: imgHeight } = slice;
+    const pageWidth = imgWidth + 2 * margin;
+    const pageHeight = imgHeight + 2 * margin;
+    
+    const page = pdfDoc.addPage([pageWidth, pageHeight]);
     
     // 从数据URL加载图像
     let image;
@@ -257,16 +249,12 @@ export const createPdfFromImages = async (imageSlices, { pageSize = 'A4', margin
       image = await pdfDoc.embedJpg(Uint8Array.from(atob(jpgData), c => c.charCodeAt(0)));
     }
     
-    // 计算图像在页面上的尺寸，保持宽高比
-    const imageWidth = width - 2 * margin;
-    const imageHeight = (imageWidth / slice.width) * slice.height;
-    
-    // 在页面上绘制图像
+    // 在页面上绘制图像（不进行缩放，保持原始尺寸）
     page.drawImage(image, {
       x: margin,
-      y: height - margin - imageHeight,
-      width: imageWidth,
-      height: imageHeight,
+      y: margin,
+      width: imgWidth,
+      height: imgHeight,
     });
   }
   

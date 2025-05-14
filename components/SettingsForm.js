@@ -38,69 +38,6 @@ const SettingsForm = ({ defaultSettings, onSettingsChange }) => {
           </div>
         </div>
 
-        {settings.autoDetectSplits && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              检测灵敏度
-            </label>
-            <input
-              type="range"
-              name="splitSensitivity"
-              value={settings.splitSensitivity}
-              onChange={handleChange}
-              min="10"
-              max="100"
-              step="5"
-              className="w-full"
-            />
-            <div className="flex justify-between text-xs text-gray-500">
-              <span>低 (仅检测明显黑线)</span>
-              <span>高 (检测较浅黑线)</span>
-            </div>
-            <p className="mt-1 text-sm text-gray-500">
-              当前值: {settings.splitSensitivity}
-            </p>
-          </div>
-        )}
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            切片最大高度 (像素)
-          </label>
-          <input
-            type="number"
-            name="maxHeight"
-            value={settings.maxHeight}
-            onChange={handleChange}
-            min="500"
-            max="3000"
-            step="100"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          />
-          <p className="mt-1 text-sm text-gray-500">
-            每页的最大高度，建议介于1000-1500之间
-          </p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            切片重叠像素
-          </label>
-          <input
-            type="number"
-            name="overlap"
-            value={settings.overlap}
-            onChange={handleChange}
-            min="0"
-            max="200"
-            step="10"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          />
-          <p className="mt-1 text-sm text-gray-500">
-            页面间的重叠像素数，避免切割内容不完整
-          </p>
-        </div>
-
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             页面边距 (点)
@@ -110,13 +47,13 @@ const SettingsForm = ({ defaultSettings, onSettingsChange }) => {
             name="margin"
             value={settings.margin}
             onChange={handleChange}
-            min="10"
+            min="0"
             max="100"
             step="5"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
           />
           <p className="mt-1 text-sm text-gray-500">
-            PDF页面边距，默认为40点
+            PDF页面边距，默认为0
           </p>
         </div>
       </div>

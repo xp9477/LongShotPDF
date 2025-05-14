@@ -7,11 +7,8 @@ import { sliceImage, createPdfFromImages, createDownloadLink } from '../utils/im
 
 // 默认设置
 const defaultSettings = {
-  maxHeight: 1200,
-  overlap: 50,
-  margin: 40,
-  autoDetectSplits: false,
-  splitSensitivity: 30
+  margin: 0,
+  autoDetectSplits: true  // 默认启用黑线检测
 };
 
 export default function Home() {
@@ -44,10 +41,8 @@ export default function Home() {
       setErrorMessage('');
       
       const slices = await sliceImage(uploadedImage.dataUrl, {
-        maxHeight: settings.maxHeight,
-        overlap: settings.overlap,
-        autoDetectSplits: settings.autoDetectSplits,
-        splitSensitivity: settings.splitSensitivity
+        autoDetectSplits: true,  // 强制启用黑线检测
+        splitSensitivity: 50
       });
       
       setImageSlices(slices);
@@ -61,23 +56,34 @@ export default function Home() {
 
   // 生成PDF
   const handleCreatePdf = async () => {
-    if (imageSlices.length === 0 && uploadedImage) {
-      await handlePreviewSlices();
-    }
-
     try {
       setIsProcessing(true);
       setErrorMessage('');
       
-      // 如果没有切片但有图片，使用原图
-      const slices = imageSlices.length > 0 ? imageSlices : [uploadedImage];
-      
-      const pdfBytes = await createPdfFromImages(slices, {
-        margin: settings.margin
-      });
-      
-      const url = createDownloadLink(pdfBytes, `${uploadedImage.name.split('.')[0]}.pdf`);
-      setPdfUrl(url);
+      // 如果还没有切片，先生成切片
+      if (imageSlices.length === 0 && uploadedImage) {
+        const slices = await sliceImage(uploadedImage.dataUrl, {
+          autoDetectSplits: true,  // 强制启用黑线检测
+          splitSensitivity: 50
+        });
+        setImageSlices(slices);
+        
+        // 使用生成的切片创建PDF
+        const pdfBytes = await createPdfFromImages(slices, {
+          margin: settings.margin
+        });
+        
+        const url = createDownloadLink(pdfBytes, `${uploadedImage.name.split('.')[0]}.pdf`);
+        setPdfUrl(url);
+      } else {
+        // 使用已有的切片创建PDF
+        const pdfBytes = await createPdfFromImages(imageSlices, {
+          margin: settings.margin
+        });
+        
+        const url = createDownloadLink(pdfBytes, `${uploadedImage.name.split('.')[0]}.pdf`);
+        setPdfUrl(url);
+      }
     } catch (error) {
       console.error('PDF生成出错:', error);
       setErrorMessage('PDF生成失败，请重试');

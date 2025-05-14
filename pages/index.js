@@ -8,7 +8,8 @@ import { sliceImage, createPdfFromImages, createDownloadLink } from '../utils/im
 // 默认设置
 const defaultSettings = {
   margin: 0,
-  autoDetectSplits: true  // 默认启用黑线检测
+  autoDetectSplits: true,  // 默认启用黑线检测
+  sharpenImage: true       // 默认启用锐化
 };
 
 export default function Home() {
@@ -42,7 +43,8 @@ export default function Home() {
       
       const slices = await sliceImage(uploadedImage.dataUrl, {
         autoDetectSplits: true,  // 强制启用黑线检测
-        splitSensitivity: 50
+        splitSensitivity: 50,
+        sharpenImage: settings.sharpenImage
       });
       
       setImageSlices(slices);
@@ -64,7 +66,8 @@ export default function Home() {
       if (imageSlices.length === 0 && uploadedImage) {
         const slices = await sliceImage(uploadedImage.dataUrl, {
           autoDetectSplits: true,  // 强制启用黑线检测
-          splitSensitivity: 50
+          splitSensitivity: 50,
+          sharpenImage: settings.sharpenImage
         });
         setImageSlices(slices);
         

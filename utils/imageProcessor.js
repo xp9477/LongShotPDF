@@ -1,6 +1,120 @@
 import { PDFDocument } from 'pdf-lib';
 
 /**
+ * 对图像应用增强锐化效果
+ * @param {HTMLCanvasElement} canvas - 包含图像的画布
+ * @returns {HTMLCanvasElement} - 锐化后的画布
+ */
+const sharpenImage = (canvas) => {
+  const ctx = canvas.getContext('2d');
+  const { width, height } = canvas;
+  
+  // 获取图像数据
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  
+  // 创建结果画布
+  const result = document.createElement('canvas');
+  result.width = width;
+  result.height = height;
+  const resultCtx = result.getContext('2d');
+  resultCtx.drawImage(canvas, 0, 0);
+  
+  // 应用多阶段锐化处理
+
+  // 1. 对比度增强
+  const resultData = resultCtx.getImageData(0, 0, width, height);
+  const resultPixels = resultData.data;
+  
+  // 计算平均亮度
+  let totalBrightness = 0;
+  for (let i = 0; i < resultPixels.length; i += 4) {
+    const r = resultPixels[i];
+    const g = resultPixels[i + 1];
+    const b = resultPixels[i + 2];
+    totalBrightness += (r + g + b) / 3;
+  }
+  const avgBrightness = totalBrightness / (width * height);
+  
+  // 对比度因子
+  const contrast = 1.2; // 增加20%对比度
+  
+  // 应用对比度
+  for (let i = 0; i < resultPixels.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      const val = resultPixels[i + c];
+      // 对比度公式: (val - avgBrightness) * contrast + avgBrightness
+      resultPixels[i + c] = Math.max(0, Math.min(255, Math.round((val - avgBrightness) * contrast + avgBrightness)));
+    }
+  }
+  
+  resultCtx.putImageData(resultData, 0, 0);
+  
+  // 2. 锐化处理 (使用UnsharpMask)
+  const blurCanvas = document.createElement('canvas');
+  blurCanvas.width = width;
+  blurCanvas.height = height;
+  const blurCtx = blurCanvas.getContext('2d');
+  
+  // 绘制原始图像到模糊画布
+  blurCtx.drawImage(result, 0, 0);
+  
+  // 应用模糊效果
+  blurCtx.filter = 'blur(2px)';
+  blurCtx.drawImage(blurCanvas, 0, 0);
+  blurCtx.filter = 'none';
+  
+  // 获取模糊后的图像数据
+  const blurData = blurCtx.getImageData(0, 0, width, height);
+  const blurPixels = blurData.data;
+  
+  // 获取当前锐化后的图像数据
+  const sharpData = resultCtx.getImageData(0, 0, width, height);
+  const sharpPixels = sharpData.data;
+  
+  // 应用UnsharpMask: 原图 + 系数 * (原图 - 模糊图)
+  const amount = 2.5; // 锐化强度
+  const threshold = 5; // 最小差异阈值
+  
+  for (let i = 0; i < sharpPixels.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      const diff = sharpPixels[i + c] - blurPixels[i + c];
+      
+      // 仅当差异大于阈值时应用锐化
+      if (Math.abs(diff) > threshold) {
+        sharpPixels[i + c] = Math.max(0, Math.min(255, sharpPixels[i + c] + amount * diff));
+      }
+    }
+  }
+  
+  // 应用最终锐化结果
+  resultCtx.putImageData(sharpData, 0, 0);
+  
+  // 3. 黑色文本增强 (特别针对文档图像)
+  const enhancedData = resultCtx.getImageData(0, 0, width, height);
+  const enhancedPixels = enhancedData.data;
+  
+  for (let i = 0; i < enhancedPixels.length; i += 4) {
+    const r = enhancedPixels[i];
+    const g = enhancedPixels[i + 1];
+    const b = enhancedPixels[i + 2];
+    
+    // 检测暗色文本区域
+    if (r < 150 && g < 150 && b < 150) {
+      // 使黑色更黑，增加对比度
+      const darkFactor = 0.8;
+      enhancedPixels[i] = Math.floor(r * darkFactor);
+      enhancedPixels[i + 1] = Math.floor(g * darkFactor);
+      enhancedPixels[i + 2] = Math.floor(b * darkFactor);
+    }
+  }
+  
+  resultCtx.putImageData(enhancedData, 0, 0);
+  
+  return result;
+};
+
+/**
  * 检测图像中的黑色水平线作为分割点
  * @param {HTMLImageElement} img - 图像元素
  * @param {number} threshold - 黑线亮度阈值（0-255，越低表示越黑）
@@ -151,11 +265,13 @@ const trimEmptySpace = (canvas) => {
  * @param {string} dataUrl - 图像的数据URL
  * @param {Object} options - 切割选项
  * @param {boolean} options.autoDetectSplits - 是否自动检测分割线
+ * @param {boolean} options.sharpenImage - 是否应用锐化效果
  * @returns {Promise<Array<{dataUrl: string, width: number, height: number}>>}
  */
 export const sliceImage = async (dataUrl, { 
   autoDetectSplits = true,
-  splitSensitivity = 50
+  splitSensitivity = 50,
+  sharpenImage: applySharpen = true
 } = {}) => {
   // 在浏览器环境中使用Canvas API处理图像
   return new Promise((resolve) => {
@@ -173,7 +289,28 @@ export const sliceImage = async (dataUrl, {
       
       // 如果没有找到黑线，返回整张图像
       if (splitPoints.length === 0) {
-        slices.push({ dataUrl, width, height });
+        // 先绘制到canvas上，方便应用锐化和裁剪
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0);
+        
+        // 应用锐化效果（如果启用）
+        let processedCanvas = canvas;
+        if (applySharpen) {
+          processedCanvas = sharpenImage(canvas);
+        }
+        
+        // 裁剪空白区域
+        const trimmedCanvas = trimEmptySpace(processedCanvas);
+        
+        slices.push({
+          dataUrl: trimmedCanvas.toDataURL('image/png'),
+          width: trimmedCanvas.width,
+          height: trimmedCanvas.height
+        });
+        
         resolve(slices);
         return;
       }
@@ -203,8 +340,14 @@ export const sliceImage = async (dataUrl, {
           width, sliceHeight
         );
         
+        // 应用锐化效果（如果启用）
+        let processedCanvas = canvas;
+        if (applySharpen) {
+          processedCanvas = sharpenImage(canvas);
+        }
+        
         // 裁剪空白区域
-        const trimmedCanvas = trimEmptySpace(canvas);
+        const trimmedCanvas = trimEmptySpace(processedCanvas);
         
         slices.push({
           dataUrl: trimmedCanvas.toDataURL('image/png'),

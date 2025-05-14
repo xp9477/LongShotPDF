@@ -18,7 +18,25 @@
 - Sharp（图像处理）
 - Tailwind CSS（样式）
 
-## 安装
+## 部署方式
+
+### 方式一：从Docker Hub拉取镜像（推荐）
+
+在支持Docker的设备上（如NAS）直接拉取预构建的镜像：
+
+```bash
+# 拉取镜像
+docker pull xp9477/longshot-pdf:latest
+
+# 运行容器
+docker run -d -p 3000:3000 --name longshot-pdf xp9477/longshot-pdf:latest
+```
+
+然后在浏览器中访问 `http://设备IP:3000`
+
+### 方式二：本地安装
+
+#### 安装依赖
 
 ```bash
 npm install
@@ -26,7 +44,7 @@ npm install
 yarn install
 ```
 
-## 运行
+#### 开发环境运行
 
 ```bash
 npm run dev
@@ -34,7 +52,15 @@ npm run dev
 yarn dev
 ```
 
-然后在浏览器中打开 http://localhost:3000
+#### 生产环境部署
+
+```bash
+npm run build
+npm start
+# 或
+yarn build
+yarn start
+```
 
 ## 使用方法
 
@@ -58,4 +84,4 @@ yarn dev
 
 ### 其他设置
 
-- 页面边距：PDF页面的边距，默认为0 
+- 页面边距：PDF页面的边距，默认为0
